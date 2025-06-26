@@ -4,14 +4,15 @@ import streamlit as st
 import pandas as pd
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # === CONFIG ===
 CQC_DATA_FILE = "data/cqc_data_tq_pl.csv"
 SNAPSHOT_FILE = "data/data_snapshot.csv"
+CQC_API_KEY = os.getenv("CQC_API_KEY")  # store in Streamlit secrets or .env
+CQC_API_BASE_URL = "https://api.service.cqc.org.uk/public/v1"
 
 # === HELPER FUNCTIONS ===
-
 def load_cqc_data():
     df = pd.read_csv(CQC_DATA_FILE)
     df = df[df['Postcode'].str.startswith(('TQ', 'PL'))]
@@ -46,14 +47,23 @@ def load_snapshot():
     else:
         return pd.DataFrame(columns=['Location Name', 'CQC Link'])
 
+def fetch_changed_locations(start_date, end_date):
+    headers = {"Ocp-Apim-Subscription-Key": CQC_API_KEY}
+    params = {
+        "startTimestamp": f"{start_date}T00:00:00Z",
+        "endTimestamp": f"{end_date}T00:00:00Z"
+    }
+    url = f"{CQC_API_BASE_URL}/changes/location"
+    response = requests.get(url, headers=headers, params=params)
+    return response.json().get("items", [])
+
 # === STREAMLIT UI ===
 st.set_page_config(page_title="Care Data Tracker", layout="wide")
 st.title("Care Provider Tracker - TQ & PL Postcodes")
 
 st.sidebar.header("Options")
-option = st.sidebar.radio("Choose an option:", ["View Data", "Check Changes", "Manual Check"])
+option = st.sidebar.radio("Choose an option:", ["View Data", "Check Changes", "Manual Check", "API Updates"])
 
-# === LOAD DATA ===
 cqc_df = load_cqc_data()
 snapshot_df = load_snapshot()
 
@@ -85,3 +95,16 @@ elif option == "Manual Check":
             st.dataframe(results)
         else:
             st.info("No matching records found.")
+
+elif option == "API Updates":
+    st.subheader("Live CQC Change Feed (via API)")
+    start_date = st.date_input("Start Date", value=datetime.now().date() - timedelta(days=14))
+    end_date = st.date_input("End Date", value=datetime.now().date())
+    if st.button("Fetch Updates"):
+        with st.spinner("Fetching changes from CQC..."):
+            changes = fetch_changed_locations(start_date.isoformat(), end_date.isoformat())
+            if changes:
+                st.success(f"{len(changes)} changes found.")
+                st.json(changes)
+            else:
+                st.info("No changes found for this period.")
