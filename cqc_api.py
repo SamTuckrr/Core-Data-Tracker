@@ -4,7 +4,8 @@ from datetime import date
 import requests
 import streamlit as st
 
-BASE_URL = "https://api.service.cqc.org.uk/public/v1"
+# Use the CQC Syndication API rather than the public API
+BASE_URL = "https://api.service.cqc.org.uk/syndication/v1"
 
 
 def _headers() -> Dict[str, str]:
@@ -15,11 +16,24 @@ def _headers() -> Dict[str, str]:
     return headers
 
 
-def search_locations(query: str) -> List[Dict]:
-    params = {"term": query}
-    r = requests.get(f"{BASE_URL}/locations", headers=_headers(), params=params)
-    r.raise_for_status()
-    return r.json().get("locations", [])
+def search_locations(term):
+    """Search CQC locations using the Syndication API."""
+    import requests
+    import streamlit as st
+
+    api_key = st.secrets["cqc"]["api_key"]
+    url = f"{BASE_URL}/locations?term={term}"
+    headers = {
+        "Ocp-Apim-Subscription-Key": api_key,
+        "Accept": "application/json",
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        return {"error": str(e), "status_code": response.status_code}
 
 
 def get_location(location_id: str) -> Dict:
